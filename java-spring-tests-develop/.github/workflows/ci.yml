@@ -1,0 +1,50 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches:
+      - develop
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up JDK
+        uses: actions/setup-java@v2
+        with:
+          java-version: '17'
+          distribution: 'adopt'
+
+      - name: Build with Maven
+        run: mvn clean install
+
+      - name: Run tests and check coverage
+        run: mvn test jacoco:report
+
+      - name: Install xmllint
+        run: sudo apt-get install -y libxml2-utils
+
+      - name: Check coverage threshold
+        run: |
+          # Вычисление покрытия
+          COVERED=$(xmllint --xpath 'sum(//counter[@type="INSTRUCTION"]/@covered)' target/site/jacoco/jacoco.xml)
+          MISSED=$(xmllint --xpath 'sum(//counter[@type="INSTRUCTION"]/@missed)' target/site/jacoco/jacoco.xml)
+
+          if [ -z "$COVERED" ] || [ -z "$MISSED" ]; then
+            echo "Ошибка: не удалось получить покрытие тестами."
+            exit 1
+          fi
+
+          # Общий процент покрытия
+          TOTAL=$((COVERED + MISSED))
+          COVERAGE=$((COVERED * 100 / TOTAL))
+
+          echo "Покрытие тестами: $COVERAGE%"
+          if [ "$COVERAGE" -lt 70 ]; then
+            echo "Покрытие тестами ниже 70%: $COVERAGE%"
+            exit 1  # Остановка пайплайна при недостаточном покрытии
+          fi
